@@ -16,9 +16,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // Product is a single catalog item. Price is stored in integer cents to avoid
@@ -37,7 +40,20 @@ var (
 func main() {
 	ctx := context.Background()
 
-	pool, err := pgxpool.New(ctx, env("DATABASE_URL", "postgres://o11y:o11y@localhost:5432/o11y?sslmode=disable"))
+	// Start tracing first so everything below is instrumented.
+	shutdown, err := initTracer(ctx)
+	if err != nil {
+		log.Fatalf("init tracer: %v", err)
+	}
+	defer func() { _ = shutdown(context.Background()) }()
+
+	// Attach the otelpgx tracer to the pool so every query becomes a span.
+	cfg, err := pgxpool.ParseConfig(env("DATABASE_URL", "postgres://o11y:o11y@localhost:5432/o11y?sslmode=disable"))
+	if err != nil {
+		log.Fatalf("parse db config: %v", err)
+	}
+	cfg.ConnConfig.Tracer = otelpgx.NewTracer()
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		log.Fatalf("db connect: %v", err)
 	}
@@ -45,6 +61,10 @@ func main() {
 	db = pool
 
 	rdb = redis.NewClient(&redis.Options{Addr: env("REDIS_ADDR", "localhost:6379")})
+	// Emit a span for every Redis command.
+	if err := redisotel.InstrumentTracing(rdb); err != nil {
+		log.Fatalf("instrument redis: %v", err)
+	}
 
 	if err := ensureSchema(ctx); err != nil {
 		log.Fatalf("schema: %v", err)
@@ -58,9 +78,13 @@ func main() {
 	mux.HandleFunc("GET /products/{id}", handleGet)
 	mux.HandleFunc("POST /products", handleCreate)
 
+	// otelhttp creates a server span per request AND extracts the trace context
+	// propagated from api-node, so both services end up in ONE trace.
+	handler := otelhttp.NewHandler(mux, "service-go")
+
 	addr := ":" + env("PORT", "8080")
 	log.Printf("service-go listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	log.Fatal(http.ListenAndServe(addr, handler))
 }
 
 // ensureSchema creates the products table (idempotently) and seeds a few rows

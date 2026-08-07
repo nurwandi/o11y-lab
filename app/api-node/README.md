@@ -36,6 +36,21 @@ SERVICE_URL=http://localhost:8080 npm start
 Usually you'll run it via the app's [`docker compose`](../README.md#run-it-locally)
 instead, which wires it to `service-go` automatically.
 
+## Tracing (Stage 2)
+
+Instrumented with OpenTelemetry using **zero-code auto-instrumentation**. The
+Dockerfile starts the app with:
+
+```
+node --import @opentelemetry/auto-instrumentations-node/register src/index.js
+```
+
+That registers the SDK before the app loads, so Express and outgoing `fetch` calls
+are traced automatically — and the `traceparent` header is injected into the call to
+`service-go`, which is what stitches the two services into one trace. Exporter and
+service name are configured via `OTEL_*` env vars (see the app
+[`docker-compose`](../README.md#tracing-stage-2)).
+
 ## Notes
 
 - Uses Node's built-in `fetch` (Node 18+) — no HTTP client dependency.

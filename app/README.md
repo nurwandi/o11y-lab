@@ -78,8 +78,48 @@ Tear down with `docker compose down` (add `-v` to wipe the database volume).
 > **ElastiCache** (Redis). Here we keep it as plain containers so the focus stays on
 > observability, not infrastructure. We deploy to real AWS in Stage 5.
 
+## Tracing (Stage 2)
+
+Both services are instrumented with **OpenTelemetry**:
+
+- **api-node** — zero-code auto-instrumentation (loaded via `node --import`). Traces
+  Express and the outgoing `fetch`, and injects the `traceparent` header.
+- **service-go** — `otelhttp` (server span + reads that header), `otelpgx` (a span per
+  Postgres query), and `redisotel` (a span per Redis command).
+
+By default (`docker compose up`) spans are printed to **stdout** — no backend needed.
+To *see* the trace as a waterfall, bring up the Jaeger overlay:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.otel.yml up --build
+# generate some traffic
+curl localhost:3000/api/products/1        # cache MISS -> includes a Postgres span
+curl localhost:3000/api/products/1        # cache HIT  -> no Postgres span
+# then open the UI
+open http://localhost:16686               # search service "api-node"
+```
+
+You'll see a **single trace spanning both services**. A MISS has a Postgres span; a
+HIT doesn't — the same contrast the app was designed around, now visible end-to-end.
+
+> Jaeger here is a temporary viewer. Stage 3 replaces it with the OpenTelemetry
+> Collector fanning out to the LGTM stack (Tempo for traces).
+
+## Container images (GHCR)
+
+The images are standardized to **GitHub Container Registry**:
+
+```
+ghcr.io/nurwandi/o11y-lab/api-node
+ghcr.io/nurwandi/o11y-lab/service-go
+```
+
+They're built and pushed automatically by
+[`.github/workflows/build-images.yml`](../.github/workflows/build-images.yml) on every
+push to `main` (using the built-in `GITHUB_TOKEN`). Locally, `docker compose build`
+tags images with these same names.
+
 ## What's next
 
-[Stage 2 — Instrumentation](../docs/00-concepts/README.md): add the OpenTelemetry SDK
-to both services and watch a single request produce a trace that spans Node → Go →
-Postgres/Redis.
+**Stage 3 — Local platform:** stand up the OpenTelemetry Collector + the LGTM stack
+locally, and watch metrics, logs, *and* traces all land in Grafana.

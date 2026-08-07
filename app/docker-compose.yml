@@ -33,10 +33,14 @@ services:
 
   service-go:
     build: ./service-go
+    image: ghcr.io/nurwandi/o11y-lab/service-go:latest
     environment:
       PORT: "8080"
       DATABASE_URL: "postgres://o11y:o11y@postgres:5432/o11y?sslmode=disable"
       REDIS_ADDR: "redis:6379"
+      OTEL_SERVICE_NAME: "service-go"
+      # No OTEL_EXPORTER_OTLP_ENDPOINT here -> spans print to stdout (console).
+      # The docker-compose.otel.yml overlay points this at Jaeger instead.
     depends_on:
       postgres:
         condition: service_healthy
@@ -47,9 +51,14 @@ services:
 
   api-node:
     build: ./api-node
+    image: ghcr.io/nurwandi/o11y-lab/api-node:latest
     environment:
       PORT: "3000"
       SERVICE_URL: "http://service-go:8080"
+      OTEL_SERVICE_NAME: "api-node"
+      OTEL_TRACES_EXPORTER: "console"
+      OTEL_METRICS_EXPORTER: "none"
+      OTEL_LOGS_EXPORTER: "none"
     depends_on:
       - service-go
     ports:

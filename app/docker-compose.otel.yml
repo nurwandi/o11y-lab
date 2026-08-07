@@ -1,0 +1,35 @@
+# Stage 2 tracing overlay: adds a Jaeger UI and points both services' OTLP
+# exporters at it, so you can SEE a single trace cross Node.js -> Go.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.otel.yml up --build
+#
+# Then open http://localhost:16686 (search service "api-node").
+#
+# Jaeger here is a temporary trace viewer. In Stage 3 it's replaced by the
+# OpenTelemetry Collector fanning out to the LGTM stack (Tempo for traces).
+name: o11y-lab-app
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4318:4318"   # OTLP/HTTP receiver
+
+  service-go:
+    environment:
+      # Presence of this endpoint flips service-go from console to OTLP export.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318"
+    depends_on:
+      jaeger:
+        condition: service_started
+
+  api-node:
+    environment:
+      OTEL_TRACES_EXPORTER: "otlp"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger:4318"
+    depends_on:
+      jaeger:
+        condition: service_started

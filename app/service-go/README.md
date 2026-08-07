@@ -31,6 +31,17 @@ single-product reads in Redis.
 This gives us two visibly different request shapes to observe once tracing is added
 in Stage 2.
 
+## Tracing (Stage 2)
+
+Instrumented with OpenTelemetry (see [`tracing.go`](tracing.go)):
+
+- **`otelhttp`** wraps the mux — one server span per request, and it **reads the
+  `traceparent` header** propagated from api-node, so both services share a trace.
+- **`otelpgx`** attaches to the pgx pool — a span per Postgres query.
+- **`redisotel`** instruments the Redis client — a span per command.
+- **Exporter:** OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, otherwise stdout —
+  so tracing is verifiable with no backend.
+
 ## Design notes
 
 - **Routing:** Go 1.22 `http.ServeMux` with method+path patterns (`GET /products/{id}`)
