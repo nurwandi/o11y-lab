@@ -58,34 +58,43 @@ jump to its exact logs. Grafana ties all three together in one UI.
 ## 3. Architecture
 
 ```
-   Developer ──terraform apply──►  AWS
-                                    │
-                   ┌────────────────┴─────────────────┐
-                   │  VPC · Public Subnet · IGW · SG   │
-                   │   single EC2  (cloud-init → k3s)   │
-                   └────────────────┬───────────────────┘
-                                    │  k3s (lightweight Kubernetes)
-                                    │
-                            [ ArgoCD ] ──pull manifests from Git──► sync
-                                    │
-        ┌───────────────────────────┼────────────────────────────┐
-        │  APP (observed)           │      PLATFORM (observability) │
-        │                           │                               │
-        │  [Node.js API] ──trace──► [Go service] ──► Postgres        │
-        │        │                      │      └────► Redis          │
-        │        └── metrics/logs/traces ──┐                         │
-        │                                   ▼                        │
-        │                        [OpenTelemetry Collector]  ◄─ hub   │
-        │                                   │                        │
-        │            ┌───────────┬──────────┼──────────┐             │
-        │            ▼           ▼          ▼           │            │
-        │        Prometheus     Loki      Tempo         │            │
-        │            └───────────┴──────────┘           │            │
-        │                        ▼                       │            │
-        │                    [Grafana] ← dashboards, correlation, alert│
-        └────────────────────────────────────────────────────────────┘
-                 ▲
-          [k6 load generator] ── generates traffic so dashboards are alive
+Developer
+    |
+    | terraform apply  (via GitHub Actions + OIDC)
+    v
++-------------------------------------+
+| AWS: VPC / Public Subnet / IGW / SG |
+|                                     |
+|   EC2  --(cloud-init)-->  k3s       |
+|   Git  --(pull)-->  ArgoCD          |
++-------------------------------------+
+    |
+    | ArgoCD deploys to cluster
+    v
+APP (observed) ===============================================
+
+ k6 --load--> Node.js API --trace--> Go service
+                  |                     |     |
+                  |                     v     v
+                  |                 Postgres Redis
+                  |
+                  +-- metrics / logs / traces
+                  |
+                  v
+      OpenTelemetry Collector  (hub)
+                 |
+PLATFORM (observability) =====================================
+
+     +-----------+-----------+
+     |           |           |
+     v           v           v
+ Prometheus    Loki       Tempo
+     |           |           |
+     +-----------+-----------+
+                 |
+                 v
+              Grafana
+    (dashboards / correlation / alerts)
 ```
 
 **Layers (deliberate separation of concerns):**
@@ -137,12 +146,15 @@ Single-AZ VPC, one **public** subnet. EC2 gets a public IP and reaches the inter
 directly through the Internet Gateway — **no NAT Gateway** (which would cost ~$32/mo).
 
 ```
-VPC (1 AZ)
- └─ Public Subnet
-     ├─ Internet Gateway (IGW)              ← free, egress for ArgoCD pull / apt / images
-     ├─ Route table → 0.0.0.0/0 via IGW     ← free
-     ├─ Security Group (SSH + Grafana/ArgoCD restricted to operator IP) ← free
-     └─ EC2 (public IP, k3s)                ← billed
++-------------------------------------------------------+
+| VPC  (single AZ)                                      |
+|                                                       |
+|   Public Subnet                                       |
+|     Internet Gateway (IGW) .......... free  (egress)  |
+|     Route table: 0.0.0.0/0 -> IGW ... free            |
+|     Security Group (SSH + UI -> your IP) . free       |
+|     EC2 (public IP, runs k3s) ....... BILLED          |
++-------------------------------------------------------+
 ```
 
 **Billed only while running:**
@@ -184,7 +196,7 @@ o11y-lab/
 │   └── grafana/           # provisioned datasources + dashboards
 ├── gitops/                # ArgoCD app-of-apps + Application CRs (watch app/ + platform/)
 ├── infra/
-│   ├── bootstrap/         # one-time, local (insignia profile): OIDC provider, IAM role, S3 state bucket
+│   ├── bootstrap/         # one-time, local (your AWS profile): OIDC provider, IAM role, S3 state bucket
 │   └── terraform/         # the environment (VPC, EC2, k3s, ArgoCD) — applied only via pipeline
 ├── .github/workflows/     # GitHub Actions: terraform plan/apply via OIDC (region ap-southeast-3)
 └── load/                  # k6 load generator

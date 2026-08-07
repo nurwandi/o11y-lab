@@ -1,0 +1,56 @@
+# Local development stack for the o11y-lab app (Stage 1).
+#
+#   docker compose up --build
+#
+# Brings up Postgres, Redis, service-go, and api-node wired together. This is the
+# app on its own — the observability platform (LGTM) is added later, in Stage 3.
+name: o11y-lab-app
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: o11y
+      POSTGRES_PASSWORD: o11y
+      POSTGRES_DB: o11y
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U o11y"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  service-go:
+    build: ./service-go
+    environment:
+      PORT: "8080"
+      DATABASE_URL: "postgres://o11y:o11y@postgres:5432/o11y?sslmode=disable"
+      REDIS_ADDR: "redis:6379"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+  api-node:
+    build: ./api-node
+    environment:
+      PORT: "3000"
+      SERVICE_URL: "http://service-go:8080"
+    depends_on:
+      - service-go
+    ports:
+      - "3000:3000"
