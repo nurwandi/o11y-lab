@@ -108,6 +108,27 @@ jump to its exact logs. Grafana ties all three together in one UI.
 
 Because ArgoCD pulls from a **public** GitHub repo, no registry auth is needed.
 
+### CI/CD — Terraform runs in GitHub Actions (OIDC, keyless)
+
+Terraform is **not** run from a laptop. It runs in a **GitHub Actions** pipeline that
+authenticates to AWS via **OIDC** — GitHub's identity provider issues a short-lived
+token, AWS trusts it and hands back temporary credentials. **No long-lived AWS access
+keys are ever stored in the repo.** ☁️ *This is the AWS-recommended pattern for CI/CD
+(GitHub OIDC → IAM role AssumeRoleWithWebIdentity).*
+
+- **Region:** `ap-southeast-3` (Jakarta).
+- **AWS account:** any AWS account you control, referenced via a local AWS CLI profile.
+- **Trust:** an IAM OIDC provider for `token.actions.githubusercontent.com` + an IAM
+  role whose trust policy is scoped to your GitHub repo.
+- **State:** remote state in **S3** (with native S3 state locking — no DynamoDB
+  needed). Required because pipeline runners are ephemeral; local state won't do.
+
+**Bootstrap (chicken-and-egg):** the OIDC provider, the IAM role, and the S3 state
+bucket must exist *before* the pipeline can run. These live in `infra/bootstrap/` and
+are applied **once, manually, with your local AWS CLI profile**. Everything after that —
+the actual environment (VPC, EC2, k3s, ArgoCD) in `infra/terraform/` — runs only
+through the pipeline.
+
 ---
 
 ## 5. Network & cost design (no NAT, minimal billing)
@@ -134,6 +155,12 @@ VPC (1 AZ)
 **Free / $0:** VPC, subnet, route table, IGW, security group.
 **Explicitly avoided:** NAT Gateway, ALB/NLB, idle Elastic IP.
 
+**One unavoidable extra (pennies):** the pipeline needs remote Terraform state, so an
+**S3 bucket** holds `terraform.tfstate`. At this size it costs well under $0.10/mo
+(a few KB of state + a handful of requests), and it persists between runs so it is
+*not* destroyed by `terraform destroy`. Using S3-native locking means no DynamoDB
+table, keeping the footprint to a single cheap bucket.
+
 `terraform destroy` returns everything to $0. The root README states this prominently.
 
 ---
@@ -156,7 +183,10 @@ o11y-lab/
 │   ├── tempo/
 │   └── grafana/           # provisioned datasources + dashboards
 ├── gitops/                # ArgoCD app-of-apps + Application CRs (watch app/ + platform/)
-├── infra/                 # Terraform: VPC, EC2, k3s + ArgoCD bootstrap
+├── infra/
+│   ├── bootstrap/         # one-time, local (insignia profile): OIDC provider, IAM role, S3 state bucket
+│   └── terraform/         # the environment (VPC, EC2, k3s, ArgoCD) — applied only via pipeline
+├── .github/workflows/     # GitHub Actions: terraform plan/apply via OIDC (region ap-southeast-3)
 └── load/                  # k6 load generator
 ```
 
