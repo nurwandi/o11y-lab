@@ -1,0 +1,13 @@
+# Tells Grafana to load dashboard JSON files from a folder on disk.
+apiVersion: 1
+
+providers:
+  - name: o11y-lab
+    orgId: 1
+    folder: o11y-lab
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

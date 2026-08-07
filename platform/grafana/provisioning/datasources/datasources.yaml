@@ -1,5 +1,5 @@
-# Grafana datasources, provisioned automatically on startup so the stack is wired
-# out of the box — no clicking through the UI to connect Prometheus/Tempo/Loki.
+# Grafana datasources, provisioned on startup — plus the cross-pillar correlation
+# that turns three separate tools into one investigation surface.
 apiVersion: 1
 
 datasources:
@@ -9,15 +9,40 @@ datasources:
     access: proxy
     url: http://prometheus:9090
     isDefault: true
+    jsonData:
+      # Let a metric exemplar jump to its trace in Tempo.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
 
   - name: Tempo
     type: tempo
     uid: tempo
     access: proxy
     url: http://tempo:3200
+    jsonData:
+      nodeGraph:
+        enabled: true
+      # From a trace/span, jump to the matching logs in Loki.
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-1h'
+        spanEndTimeShift: '1h'
+        filterByTraceID: true
+        tags:
+          - key: service.name
+            value: service_name
 
   - name: Loki
     type: loki
     uid: loki
     access: proxy
     url: http://loki:3100
+    jsonData:
+      # From a log line's trace_id, jump straight to the trace in Tempo.
+      derivedFields:
+        - name: trace_id
+          matcherType: label
+          matcherRegex: trace_id
+          url: '${__value.raw}'
+          datasourceUid: tempo

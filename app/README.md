@@ -129,5 +129,9 @@ docker compose -f docker-compose.yml -f docker-compose.platform.yml up --build
 # Grafana: http://localhost:3001
 ```
 
-**Stage 4 — Dashboards & correlation:** Grafana dashboards, alerts, SLOs, and the
-metric → trace → log drill-down.
+**Stage 4 is built** — the platform ships a provisioned Grafana dashboard (RED),
+trace↔log correlation, an availability SLI, and a latency alert. See
+[`platform/grafana/`](../platform/grafana/).
+
+**Stage 5 — Deploy to AWS:** Terraform provisions a single EC2 running k3s, ArgoCD
+syncs the app + platform from Git, all driven by a keyless GitHub Actions pipeline.

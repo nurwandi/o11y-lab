@@ -13,6 +13,7 @@ Read these in order. They're short on purpose.
 | 03 | [OpenTelemetry](03-opentelemetry.md) | The vendor-neutral "hub" that generates & routes telemetry |
 | 04 | [The LGTM stack](04-lgtm-stack.md) | Loki, Grafana, Tempo, Prometheus — who stores what |
 | 05 | [LGTM vs CloudWatch](05-lgtm-vs-cloudwatch.md) | How this compares to AWS-native observability |
+| 06 | [Golden signals, SLOs & correlation](06-golden-signals-slo.md) | What to dashboard, SLIs/SLOs, and how the pillars link (Stage 4) |
 
 > **☁️ Coming from AWS?** Every lesson pairs concepts with their AWS equivalent, so
 > you can map new ideas onto tools you already know (CloudWatch, X-Ray, ADOT, AMP, AMG).

@@ -1,0 +1,48 @@
+# A provisioned alert rule: fire when service-go's p95 HTTP latency exceeds 500ms.
+# Uses the default notification policy (no external contact point needed for the lab).
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: app
+    folder: o11y-lab
+    interval: 1m
+    rules:
+      - uid: high-p95-latency
+        title: service-go p95 latency high
+        condition: C
+        for: 2m
+        noDataState: OK
+        execErrState: OK
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 HTTP server latency is above 500ms"
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket[5m])))"
+              instant: true
+              range: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - type: query
+                  evaluator:
+                    type: gt
+                    params: [0.5]
