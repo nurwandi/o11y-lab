@@ -1,0 +1,36 @@
+# Node.js
+node_modules/
+npm-debug.log*
+.env
+.env.local
+
+# Go
+bin/
+*.exe
+*.test
+*.out
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!*.tfvars.example
+override.tf
+override.tf.json
+
+# Kubernetes / secrets
+kubeconfig
+*.kubeconfig
+*.pem
+*.key
+
+# k6
+summary.json
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
