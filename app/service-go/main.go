@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -33,8 +34,9 @@ type Product struct {
 }
 
 var (
-	db  *pgxpool.Pool
-	rdb *redis.Client
+	db     *pgxpool.Pool
+	rdb    *redis.Client
+	appLog *slog.Logger
 )
 
 func main() {
@@ -46,6 +48,19 @@ func main() {
 		log.Fatalf("init tracer: %v", err)
 	}
 	defer func() { _ = shutdown(context.Background()) }()
+
+	logger, logShutdown, err := initLogger(ctx)
+	if err != nil {
+		log.Fatalf("init logger: %v", err)
+	}
+	appLog = logger
+	defer func() { _ = logShutdown(context.Background()) }()
+
+	meterShutdown, err := initMeter(ctx)
+	if err != nil {
+		log.Fatalf("init meter: %v", err)
+	}
+	defer func() { _ = meterShutdown(context.Background()) }()
 
 	// Attach the otelpgx tracer to the pool so every query becomes a span.
 	cfg, err := pgxpool.ParseConfig(env("DATABASE_URL", "postgres://o11y:o11y@localhost:5432/o11y?sslmode=disable"))
@@ -154,6 +169,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 	cacheKey := "product:" + id
 
 	if cached, err := rdb.Get(r.Context(), cacheKey).Result(); err == nil {
+		appLog.InfoContext(r.Context(), "product cache hit", "id", id)
 		w.Header().Set("X-Cache", "HIT")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -177,6 +193,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		// Cache for 60s. Errors here are non-fatal: a cache miss just costs a DB hit.
 		rdb.Set(r.Context(), cacheKey, b, 60*time.Second)
 	}
+	appLog.InfoContext(r.Context(), "product cache miss", "id", id)
 	w.Header().Set("X-Cache", "MISS")
 	writeJSON(w, http.StatusOK, p)
 }

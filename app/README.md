@@ -121,5 +121,13 @@ tags images with these same names.
 
 ## What's next
 
-**Stage 3 — Local platform:** stand up the OpenTelemetry Collector + the LGTM stack
-locally, and watch metrics, logs, *and* traces all land in Grafana.
+**Stage 3 is built** — see [`platform/`](../platform/) for the full OpenTelemetry
+Collector + LGTM stack. Bring it up (all three signals land in Grafana):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.platform.yml up --build
+# Grafana: http://localhost:3001
+```
+
+**Stage 4 — Dashboards & correlation:** Grafana dashboards, alerts, SLOs, and the
+metric → trace → log drill-down.

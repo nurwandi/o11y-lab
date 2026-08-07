@@ -1,0 +1,55 @@
+# OpenTelemetry Collector — the hub.
+#
+# Receives OTLP from the apps and fans each signal out to its backend:
+#   traces  -> Tempo   (OTLP)
+#   metrics -> Prometheus (scraped from this collector's :8889 endpoint)
+#   logs    -> Loki    (OTLP)
+#
+# The apps only ever talk to this collector. Swapping a backend is a change HERE,
+# never in the application code — that's the whole point of the hub.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  # Traces -> Tempo over OTLP/gRPC.
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Metrics -> exposed in Prometheus format for Prometheus to scrape (port 8889).
+  prometheus:
+    endpoint: 0.0.0.0:8889
+
+  # Logs -> Loki's native OTLP ingest endpoint.
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
+service:
+  telemetry:
+    metrics:
+      address: 0.0.0.0:8888 # the collector's own internal metrics
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/loki]

@@ -42,6 +42,14 @@ Instrumented with OpenTelemetry (see [`tracing.go`](tracing.go)):
 - **Exporter:** OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, otherwise stdout —
   so tracing is verifiable with no backend.
 
+All three pillars are wired (see [`tracing.go`](tracing.go), [`metrics.go`](metrics.go),
+[`logging.go`](logging.go)):
+
+- **Metrics** — a global MeterProvider makes `otelhttp` emit HTTP server metrics
+  (request count + duration) automatically.
+- **Logs** — `slog` logs are bridged to OTLP and carry the active `trace_id`, so a log
+  line links back to its trace in Grafana.
+
 ## Design notes
 
 - **Routing:** Go 1.22 `http.ServeMux` with method+path patterns (`GET /products/{id}`)
