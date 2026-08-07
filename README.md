@@ -48,33 +48,43 @@ By the end you can answer, for any request in a distributed system:
 ## Architecture
 
 ```
-   Developer ──terraform apply──►  AWS
-                                    │
-                   ┌────────────────┴─────────────────┐
-                   │  VPC · Public Subnet · IGW · SG   │
-                   │   single EC2  (cloud-init → k3s)   │
-                   └────────────────┬───────────────────┘
-                                    │  k3s (lightweight Kubernetes)
-                            [ ArgoCD ] ──pull from Git──► sync
-                                    │
-        ┌───────────────────────────┼────────────────────────────┐
-        │  APP (observed)           │      PLATFORM (observability) │
-        │                           │                               │
-        │  [Node.js API] ──trace──► [Go service] ──► Postgres        │
-        │        │                      │      └────► Redis          │
-        │        └── metrics/logs/traces ──┐                         │
-        │                                   ▼                        │
-        │                        [OpenTelemetry Collector]  ◄─ hub   │
-        │                                   │                        │
-        │            ┌───────────┬──────────┼──────────┐             │
-        │            ▼           ▼          ▼           │            │
-        │        Prometheus     Loki      Tempo         │            │
-        │            └───────────┴──────────┘           │            │
-        │                        ▼                       │            │
-        │                    [Grafana] ← dashboards, correlation, alert│
-        └────────────────────────────────────────────────────────────┘
-                 ▲
-          [k6 load generator] ── keeps the dashboards alive
+Developer
+    |
+    | terraform apply
+    v
++-------------------------------------+
+| AWS: VPC / Public Subnet / IGW / SG |
+|                                     |
+|   EC2  --(cloud-init)-->  k3s       |
+|   Git  --(pull)-->  ArgoCD          |
++-------------------------------------+
+    |
+    | ArgoCD deploys to cluster
+    v
+APP (observed) ===============================================
+
+ k6 --load--> Node.js API --trace--> Go service
+                  |                     |     |
+                  |                     v     v
+                  |                 Postgres Redis
+                  |
+                  +-- metrics / logs / traces
+                  |
+                  v
+      OpenTelemetry Collector
+                 |
+PLATFORM (observability) =====================================
+
+     +-----------+-----------+
+     |           |           |
+     v           v           v
+ Prometheus    Loki       Tempo
+     |           |           |
+     +-----------+-----------+
+                 |
+                 v
+              Grafana
+    (dashboards / correlation / alerts)
 ```
 
 Full design & decisions: [`docs/architecture/design.md`](docs/architecture/design.md).
