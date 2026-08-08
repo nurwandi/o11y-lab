@@ -1,0 +1,42 @@
+#!/bin/bash
+# cloud-init: install k3s, install ArgoCD, and hand control to GitOps.
+set -euxo pipefail
+
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+# 1. k3s (lightweight Kubernetes) — single-node.
+curl -sfL https://get.k3s.io | sh -
+
+# Wait for the API to be ready.
+until k3s kubectl get nodes >/dev/null 2>&1; do sleep 5; done
+
+# 2. ArgoCD.
+k3s kubectl create namespace argocd
+k3s kubectl apply -n argocd \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+k3s kubectl -n argocd rollout status deploy/argocd-server --timeout=300s || true
+
+# 3. Root Application (app-of-apps). ArgoCD reads gitops/ from the repo and syncs
+#    everything under it — the platform and the app — automatically from here on.
+k3s kubectl apply -f - <<EOF
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: ${gitops_repo_url}
+    targetRevision: main
+    path: gitops
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+EOF

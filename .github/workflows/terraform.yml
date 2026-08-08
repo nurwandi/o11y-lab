@@ -1,0 +1,53 @@
+# Provisions infra/terraform on AWS. Authenticates via GitHub OIDC (no stored keys).
+# Requires repo variables: AWS_CI_ROLE_ARN, TF_STATE_BUCKET, OPERATOR_CIDR, EC2_KEY_NAME.
+name: terraform
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform.yml"
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+  workflow_dispatch:
+
+permissions:
+  id-token: write # required for OIDC
+  contents: read
+
+env:
+  AWS_REGION: ap-southeast-3
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.3
+
+      - run: terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+
+      - run: terraform fmt -check
+
+      - run: terraform validate
+
+      - name: Plan
+        run: terraform plan -input=false -var="operator_cidr=${{ vars.OPERATOR_CIDR }}" -var="key_name=${{ vars.EC2_KEY_NAME }}"
+
+      - name: Apply (main only)
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: terraform apply -auto-approve -input=false -var="operator_cidr=${{ vars.OPERATOR_CIDR }}" -var="key_name=${{ vars.EC2_KEY_NAME }}"

@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars and edit. terraform.tfvars is gitignored.
+
+# S3 bucket names are GLOBALLY unique — pick your own (e.g. add a random suffix).
+state_bucket_name = "o11y-lab-tfstate-changeme"
+
+# region        = "ap-southeast-3"
+# github_repo   = "nurwandi/o11y-lab"
+
+# If the account ALREADY has a GitHub OIDC provider, set this to false:
+# create_github_oidc_provider = false
